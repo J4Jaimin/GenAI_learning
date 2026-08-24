@@ -6,9 +6,10 @@ from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
-load_dotenv()
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
 
+load_dotenv()
 
 llm = ChatOpenAI(
     model="openai/gpt-oss-120b",
@@ -26,7 +27,8 @@ def chat_node(state: ChatState):
     response = llm.invoke(messages)
     return {'messages': [response]}
 
-checkpointer = MemorySaver()
+conn = sqlite3.connect(database="chatbot.db", check_same_thread=False)
+checkpointer = SqliteSaver(conn=conn)
 
 graph = StateGraph(ChatState)
 

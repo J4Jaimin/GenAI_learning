@@ -1,6 +1,6 @@
 import streamlit as st
 import uuid
-from langgraph_backend import chatbot
+from langgraph_backend import chatbot, checkpointer
 from langchain_core.messages import HumanMessage
 
 # ---------------------- chat bubble alignment (user: right, assistant: left) ----------------------
@@ -27,9 +27,18 @@ def reset_chat():
     st.session_state['thread_id'] = thread_id
     st.session_state['message_history'] = []
 
-def add_thread(thread_id, title):
-    if thread_id not in [t['thread_id'] for t in st.session_state['chat_threads']]:
-        st.session_state['chat_threads'].insert(0, {'thread_id': thread_id, 'title': title})
+def add_thread(thread_id):
+    if thread_id not in st.session_state['chat_threads']:
+        st.session_state['chat_threads'].insert(0, thread_id)
+
+def retrieve_all_threads():
+    # every checkpoint tuple in the sqlite db carries its thread_id in config
+    all_threads = []
+    for checkpoint in checkpointer.list(None):
+        thread_id = checkpoint.config['configurable']['thread_id']
+        if thread_id not in all_threads:
+            all_threads.append(thread_id)
+    return all_threads
 
 def load_conversation(thread_id):
     state = chatbot.get_state(config={'configurable': {'thread_id': thread_id}})
@@ -42,6 +51,13 @@ def load_conversation(thread_id):
 
     return message_history
 
+def thread_label(thread_id):
+    messages = load_conversation(thread_id)
+    for message in messages:
+        if message['role'] == 'user':
+            return message['content'][:30]
+    return thread_id[:8]
+
 # ---------------------- session state init ----------------------
 
 if 'message_history' not in st.session_state:
@@ -51,7 +67,8 @@ if 'thread_id' not in st.session_state:
     st.session_state['thread_id'] = generate_thread_id()
 
 if 'chat_threads' not in st.session_state:
-    st.session_state['chat_threads'] = []
+    # loaded from chatbot.db so past chats survive an app restart
+    st.session_state['chat_threads'] = retrieve_all_threads()
 
 # ---------------------- sidebar UI ----------------------
 
@@ -62,10 +79,10 @@ if st.sidebar.button('New Chat'):
 
 st.sidebar.header('My Conversations')
 
-for thread in st.session_state['chat_threads']:
-    if st.sidebar.button(thread['title'], key=thread['thread_id']):
-        st.session_state['thread_id'] = thread['thread_id']
-        st.session_state['message_history'] = load_conversation(thread['thread_id'])
+for thread_id in st.session_state['chat_threads']:
+    if st.sidebar.button(thread_label(thread_id), key=thread_id):
+        st.session_state['thread_id'] = thread_id
+        st.session_state['message_history'] = load_conversation(thread_id)
 
 # ---------------------- main UI ----------------------
 
@@ -74,19 +91,19 @@ CONFIG = {'configurable': {'thread_id': st.session_state['thread_id']}}
 # loading the conversation history
 for message in st.session_state['message_history']:
     with st.chat_message(message['role']):
-        st.text(message['content'])
+        st.markdown(message['content'])
 
 user_input = st.chat_input('Type here')
 
 if user_input:
 
     # register this thread in the sidebar the first time it gets a message
-    add_thread(st.session_state['thread_id'], user_input[:30])
+    add_thread(st.session_state['thread_id'])
 
     # first add the message to message_history
     st.session_state['message_history'].append({'role': 'user', 'content': user_input})
     with st.chat_message('user'):
-        st.text(user_input)
+        st.markdown(user_input)
 
     with st.chat_message("assistant"):
 
