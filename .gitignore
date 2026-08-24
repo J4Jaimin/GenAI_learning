@@ -1,1 +1,3 @@
 .env
+/Langgraph/chatbot/chatbot.db*
+/Langgraph/chatbot/chatbot_with_UI/chatbot.db*
